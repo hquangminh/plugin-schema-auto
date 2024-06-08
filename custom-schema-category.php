@@ -34,12 +34,9 @@ function devvn_add_custom_category_schema()
     // Fetch products in the current category
     $products = get_products_in_category($category_id);
 
-    // Get meta description using Yoast SEO function
-    $meta_description = get_wpseo_metadesc($category_id);
+    // Get meta description directly from term meta
+    $meta_description = get_category_meta_description($category_id);
     $description_text = $meta_description ? $meta_description : wp_trim_words(wp_strip_all_tags($description), 25, '...');
-
-    // Get the disambiguating description from the term description
-    $disambiguating_description = get_disambiguating_description($description);
 
     // Generate a random review
     $random_review = get_random_review($category_name, $category_url);
@@ -49,6 +46,9 @@ function devvn_add_custom_category_schema()
 
     // Get the alt text of the first image from the category description
     $first_image_alt = get_first_image_alt_from_description($category_id);
+
+    // Get the disambiguating description from the category description
+    $disambiguating_description = get_disambiguating_description($category_id);
 
     // Create the new schema
     $custom_schema = [
@@ -144,8 +144,8 @@ function devvn_add_custom_category_schema()
           "url" => $category_url,
           "@id" => $category_url . "#category",
           "image" => get_all_image_urls_from_description($category_id),
-          "description" => $disambiguating_description,
-          "disambiguatingDescription" => $description_text,
+          "description" => $description_text,
+          "disambiguatingDescription" => $disambiguating_description,
           "brand" => [
             "@type" => "Brand",
             "name" => ["Nhựa Việt Tiến", "Việt Tiến Plastic", "Công ty nhựa Việt Tiến"]
@@ -198,10 +198,10 @@ function devvn_add_custom_category_schema()
   }
 }
 
-// Function to get Yoast meta description
-function get_wpseo_metadesc($term_id)
+// Function to get category meta description
+function get_category_meta_description($category_id)
 {
-  return get_term_meta($term_id, '_yoast_wpseo_metadesc', true);
+  return get_term_meta($category_id, '_yoast_wpseo_metadesc', true);
 }
 
 // Function to get products in a category
@@ -267,8 +267,9 @@ function get_first_image_alt_from_description($category_id)
 }
 
 // Function to get the disambiguating description from the category description
-function get_disambiguating_description($content)
+function get_disambiguating_description($category_id)
 {
+  $content = term_description($category_id);
   $dom = new DOMDocument;
   @$dom->loadHTML(mb_convert_encoding($content, 'HTML-ENTITIES', 'UTF-8'));
   $h1 = $dom->getElementsByTagName('h1')->item(0);
