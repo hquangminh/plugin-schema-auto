@@ -194,9 +194,8 @@ function devvn_add_custom_category_schema()
 // Function to get Yoast meta description
 function get_yoast_meta_description($term_id)
 {
-  return get_term_meta($term_id, '_yoast_wpseo_metadesc', true) ?: '';
+  return get_post_meta(get_the_ID(), '_yoast_wpseo_metadesc', true);
 }
-
 
 // Function to get WooCommerce disambiguating description
 function get_woocommerce_disambiguating_description($term_id)

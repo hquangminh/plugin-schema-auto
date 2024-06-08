@@ -1,6 +1,6 @@
 <?php
 /*
-Plugin Name: WooCommerce Custom Schema Integration
+Plugin Name: WooCommerce Custom Product Schema Integration
 Description: Replace the default JSON-LD schema on WooCommerce product detail pages with custom schema format.
 Version: 1.0
 Author: Quang Minh - Dev
