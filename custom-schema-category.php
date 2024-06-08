@@ -78,10 +78,6 @@ function devvn_add_custom_category_schema()
           "publisher" => [
             "@id" => "https://viettienplastic.vn/#organization"
           ],
-          "license" => "https://viettienplastic.vn/license",
-          "creditText" => "Nhựa Việt Tiến",
-          "acquireLicensePage" => "https://viettienplastic.vn/acquire-license",
-          "copyrightNotice" => "© 2023 Nhựa Việt Tiến"
         ],
         [
           "@type" => "CollectionPage",
@@ -128,9 +124,9 @@ function devvn_add_custom_category_schema()
             "@id" => "https://viettienplastic.vn/"
           ],
           "copyrightNotice" => "Copyright 2024 © Công ty TNHH Nhựa Việt Tiến",
-          "acquireLicensePage" => "https://viettienplastic.vn/acquire-license",
+          "acquireLicensePage" => "https://viettienplastic.vn/acquire-license/",
           "creditText" => "Nhựa Việt Tiến",
-          "license" => "https://viettienplastic.vn/license"
+          "license" => "https://viettienplastic.vn/license/"
         ],
         [
           "@type" => "Product",
