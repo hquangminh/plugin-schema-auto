@@ -34,13 +34,8 @@ function devvn_add_custom_category_schema()
     // Fetch products in the current category
     $products = get_products_in_category($category_id);
 
-    // Fetch HTML content of the category page
-    $html = file_get_contents($category_url);
-    $dom = new DOMDocument;
-    @$dom->loadHTML(mb_convert_encoding($html, 'HTML-ENTITIES', 'UTF-8'));
-    $xpath = new DOMXPath($dom);
-    $meta_description_nodes = $xpath->query("//meta[@name='description']");
-    $meta_description = $meta_description_nodes->length > 0 ? $meta_description_nodes->item(0)->getAttribute('content') : '';
+    // Get meta description directly from term meta
+    $meta_description = get_category_meta_description($category_id);
     $description_text = $meta_description ? $meta_description : wp_trim_words(wp_strip_all_tags($description), 25, '...');
 
     // Generate a random review
@@ -204,9 +199,9 @@ function devvn_add_custom_category_schema()
 }
 
 // Function to get category meta description
-function get_category_meta_description()
+function get_category_meta_description($category_id)
 {
-  return get_post_meta(get_queried_object_id(), '_yoast_wpseo_metadesc', true);
+  return get_term_meta($category_id, '_yoast_wpseo_metadesc', true);
 }
 
 // Function to get products in a category
