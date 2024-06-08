@@ -59,9 +59,9 @@ function get_product_sku($product)
         $sku = $product->get_sku();
         if (empty($sku)) {
             $random_number = rand(1000, 9999);
-            $sku = 'TDR' . $random_number;
+            $sku = strtoupper(mb_substr($product, 0, 2));
         }
-        return $sku;
+        return $sku + $random_number;
     }
     return '';
 }
@@ -73,9 +73,10 @@ function get_product_mpn($product)
         $mpn = get_post_meta($product->get_id(), 'mpn', true);
         if (empty($mpn)) {
             $random_number = rand(1000, 9999);
-            $mpn = 'TDR' . $random_number;
+            $mpn = strtoupper(mb_substr($product, 0, 2));
+
         }
-        return $mpn;
+        return $mpn + $random_number;
     }
     return '';
 }

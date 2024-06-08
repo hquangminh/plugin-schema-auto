@@ -310,8 +310,19 @@ function get_all_image_urls_from_description($category_id)
 function get_disambiguating_description($category_id)
 {
   $content = term_description($category_id);
-  $content = strip_tags($content); // Remove HTML tags
-  return mb_substr($content, 0, 200) . (mb_strlen($content) > 200 ? '...' : '');
+  $dom = new DOMDocument;
+  @$dom->loadHTML(mb_convert_encoding($content, 'HTML-ENTITIES', 'UTF-8'));
+  $h1 = $dom->getElementsByTagName('h1')->item(0);
+  if ($h1) {
+    $description = '';
+    while ($h1 = $h1->nextSibling) {
+      if ($h1->nodeType === XML_TEXT_NODE) {
+        $description .= $h1->nodeValue;
+      }
+    }
+    return mb_substr(trim($description), 0, 200) . (mb_strlen($description) > 200 ? '...' : '');
+  }
+  return mb_substr(strip_tags($content), 0, 200) . (mb_strlen($content) > 200 ? '...' : '');
 }
 
 // Function to get materials of the category
@@ -356,20 +367,34 @@ function get_similar_categories($category_id)
   return $isSimilarTo;
 }
 
-// Function to generate a SKU
+// Function to generate SKU
 function generate_sku($category_name)
 {
-  $sku = strtoupper(mb_substr($category_name, 0, 2)); // Take first two characters
+  // Split the category name into words and take the first letter of each word
+  $words = explode(' ', $category_name);
+  $sku = '';
+  foreach ($words as $word) {
+    $sku .= strtoupper(mb_substr($word, 0, 1));
+  }
   return $sku . rand(1000, 9999);
 }
 
 // Function to generate a MPN
+// Function to generate a MPN
 function generate_mpn($category_id, $category_name)
 {
   $product_count = count(get_products_in_category($category_id));
-  $mpn_prefix = strtoupper(mb_substr($category_name, 0, 2)); // Take first two characters
+
+  // Split the category name into words and take the first letter of each word
+  $words = explode(' ', $category_name);
+  $mpn_prefix = '';
+  foreach ($words as $word) {
+    $mpn_prefix .= strtoupper(mb_substr($word, 0, 1));
+  }
+
   return $mpn_prefix . $product_count;
 }
+
 
 // Function to get a random review
 function get_random_review($category_name, $category_url)
@@ -457,22 +482,22 @@ function save_category_custom_fields($term_id)
 {
   if (isset($_POST['category_keywords'])) {
     $keywords = array_map('trim', explode(',', sanitize_text_field($_POST['category_keywords'])));
-    $keywords = array_map(function($keyword) {
-        return trim($keyword, '"');
+    $keywords = array_map(function ($keyword) {
+      return trim($keyword, '"');
     }, $keywords);
     update_term_meta($term_id, 'category_keywords', implode(',', $keywords));
   }
   if (isset($_POST['category_alternate_names'])) {
     $alternate_names = array_map('trim', explode(',', sanitize_text_field($_POST['category_alternate_names'])));
-    $alternate_names = array_map(function($name) {
-        return trim($name, '"');
+    $alternate_names = array_map(function ($name) {
+      return trim($name, '"');
     }, $alternate_names);
     update_term_meta($term_id, 'category_alternate_names', implode(',', $alternate_names));
   }
   if (isset($_POST['category_material'])) {
     $materials = array_map('trim', explode(',', sanitize_text_field($_POST['category_material'])));
-    $materials = array_map(function($material) {
-        return trim($material, '"');
+    $materials = array_map(function ($material) {
+      return trim($material, '"');
     }, $materials);
     update_term_meta($term_id, 'category_material', implode(',', $materials));
   }
