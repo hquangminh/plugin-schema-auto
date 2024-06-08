@@ -1,37 +1,281 @@
 <?php
 /*
-Plugin Name: WooCommerce Category Schema Integration
-Description: Generate and insert custom JSON-LD schema for WooCommerce product categories.
+Plugin Name: WooCommerce Custom Schema Integration
+Description: Replace the default JSON-LD schema on WooCommerce product detail pages with custom schema format.
 Version: 1.0
 Author: Quang Minh - Dev
 */
 
-// Remove Yoast and Schema Pro schemas on WooCommerce category pages
-add_action('template_redirect', 'devvn_remove_yoast_schema_on_category_page', 20);
-function devvn_remove_yoast_schema_on_category_page()
+// Remove Yoast Schema on WooCommerce product detail page
+add_action('template_redirect', 'devvn_remove_yoast_schema_on_product_page', 20);
+function devvn_remove_yoast_schema_on_product_page()
 {
-    if (is_product_category()) {
-        add_filter('wpseo_json_ld_output', '__return_false', 20); // Disable Yoast schema output
-        remove_all_actions('wp_head', 10); // Disable Schema Pro actions
+    if (is_product()) {
+        add_filter('wpseo_json_ld_output', '__return_false', 20); // Disable Yoast schema output with a lower priority
     }
 }
 
-// Hook to add custom schema on WooCommerce category pages
-add_action('wp_head', 'devvn_add_custom_category_schema', 5);
+// Function to get the product name
+function get_product_name($product)
+{
+    return $product ? $product->get_name() : '';
+}
 
-function devvn_add_custom_category_schema() {
-    if (is_product_category()) {
-        global $wp_query;
+// Function to get the product URL
+function get_product_url()
+{
+    return get_permalink();
+}
 
-        // Get current category
-        $category = $wp_query->get_queried_object();
-        $category_id = $category->term_id;
-        $category_name = $category->name;
-        $category_url = get_term_link($category);
-        $category_description = get_category_meta_description();
+// Function to get keywords from Yoast SEO
+function get_product_keywords()
+{
+    return get_post_meta(get_the_ID(), '_yoast_wpseo_focuskw', true);
+}
 
-        // Fetch products in the current category
-        $products = get_products_in_category($category_id);
+// Function to get product images
+function get_product_images($product)
+{
+    $images = [];
+    if ($product) {
+        $images[] = wp_get_attachment_url($product->get_image_id());
+        foreach ($product->get_gallery_image_ids() as $image_id) {
+            $images[] = wp_get_attachment_url($image_id);
+        }
+    }
+    return $images;
+}
+
+// Function to get the product meta description
+function get_product_meta_description()
+{
+    return get_post_meta(get_the_ID(), '_yoast_wpseo_metadesc', true);
+}
+
+// Function to get the product SKU
+function get_product_sku($product)
+{
+    if ($product) {
+        $sku = $product->get_sku();
+        if (empty($sku)) {
+            $random_number = rand(1000, 9999);
+            $sku = 'TDR' . $random_number;
+        }
+        return $sku;
+    }
+    return '';
+}
+
+// Function to get the product MPN (assuming MPN is stored in a meta field 'mpn')
+function get_product_mpn($product)
+{
+    if ($product) {
+        $mpn = get_post_meta($product->get_id(), 'mpn', true);
+        if (empty($mpn)) {
+            $random_number = rand(1000, 9999);
+            $mpn = 'TDR' . $random_number;
+        }
+        return $mpn;
+    }
+    return '';
+}
+
+// Function to return JSON for hasMerchantReturnPolicy field
+function get_hasMerchantReturnPolicy()
+{
+    return '{
+        "@type": "MerchantReturnPolicy",
+        "inStoreReturnsOffered": "True",
+        "merchantReturnDays": "10",
+        "merchantReturnLink": "https://viettienplastic.vn/chinh-sach-doi-tra/"
+    }';
+}
+
+// Function to return JSON for shippingDetails field
+function get_shippingDetails()
+{
+    return '{
+        "@type": "OfferShippingDetails",
+        "shippingRate": {
+            "@type": "MonetaryAmount",
+            "value": "0",
+            "currency": "VND"
+        },
+        "shippingDestination": {
+            "@type": "DefinedRegion",
+            "addressCountry": "VN"
+        },
+        "deliveryTime": {
+            "@type": "ShippingDeliveryTime",
+            "businessDays": "3-5"
+        },
+        "shippingLabel": "Nhựa Việt Tiến Tự Vận Chuyển"
+    }';
+}
+
+// Function to get random reviews from the JSON data
+function get_random_reviews()
+{
+    $reviews_data = [
+        ["Huy", "Nguyễn", "Huy Nguyễn", "5", "Còn hàng không shop ơi?"],
+        ["Khang", "Minh", "Minh Khang", "4", "Bên mình có hỗ trợ trả góp không ạ?"],
+        ["Trang", "Hà", "Hà Trang", "5", "Tôi muốn mua vận chuyển về Long An thì phí ship sao?"],
+        ["Linh", "Phạm", "Phạm Linh", "4", "Bây giờ mình mua thì có khuyến mãi giảm giá gì không ạ?"],
+        ["Phương", "Trần", "Phương Trần", "5", "Tôi cần tư vấn về sản phẩm"],
+        ["Minh", "Nguyễn", "Nguyễn Minh", "5", "Giao hàng nhanh, đóng gói chắc chắn, nhân viên hỗ trợ nhiệt tình. Chắc chắn sẽ giới thiệu cho bạn bè mua ở đây."],
+        ["Khoa", "Việt", "Việt Khoa", "4", "Sản phẩm OK nha"],
+        ["Phát", "Lê", "Lê Phát", "5", "Rất tốt ạ"],
+        ["Khôi", "Huỳnh", "Huỳnh Khôi", "4", "Sẽ giới thiệu sản phẩm cho bạn bè, người thân. Chiêm Tài làm ăn OK."],
+        ["Anh", "Nam", "Nam Anh", "5", "Hài lòng. Sản phẩm rất ổn trong tầm giá. Sẽ giới thiệu người thân sử dụng luôn."],
+        ["Hương", "Bùi", "Hương Bùi", "4", "Đợt nghe người bạn giới thiệu mua dùng, cũng được nửa năm rồi mà ổn áp, không lỗi vặt, dễ sử dụng"],
+        ["Thảo", "Đỗ", "Thảo Đỗ", "5", "Hàng xài rồi mà ok lắm ạ, thương hiệu lạ lúc mua cũng hơi lấn cấn mà mua rồi thấy ổn áp lắm ạ"],
+        ["Hà", "Ngô", "Ngô Hà", "4", "Hàng chất lượng và đẹp."],
+        ["Huyền", "Dương", "Dương Huyền", "5", "Sản phẩm chất lượng và dùng rất OK theo cảm nhận của mình."],
+        ["Ngọc", "Lam", "Lam Ngọc", "5", "OK"],
+        ["Hằng", "Phạm", "Hằng Phạm", "4", "Rất hài lòng"],
+        ["Ngân", "Kim", "Kim Ngân", "5", "Dùng ổn nè, sẽ tiếp tục ủng hộ hãng"],
+        ["Quang", "Anh", "Anh Quang", "4", "Tốt"],
+        ["Thạch", "Ngọc", "Ngọc Thạch", "5", "OK"],
+        ["Nam", "Lý", "Lý Nam", "5", "Tốt, ủng hộ"]
+    ];
+
+    shuffle($reviews_data); // Shuffle the reviews to get random ones
+    $random_reviews = array_slice($reviews_data, 0, 5); // Get up to 5 random reviews
+    $reviews = [];
+    foreach ($random_reviews as $review) {
+        $reviews[] = [
+            "@type" => "Review",
+            "name" => $review[2],
+            "reviewBody" => $review[4],
+            "reviewRating" => [
+                "@type" => "Rating",
+                "ratingValue" => $review[3],
+                "bestRating" => "5",
+                "worstRating" => "4"
+            ],
+            "datePublished" => date("Y-m-d"),
+            "author" => [
+                "@type" => "Person",
+                "name" => $review[2]
+            ]
+        ];
+    }
+    return $reviews;
+}
+
+// Function to get product reviews or random reviews if none exist
+function get_product_reviews($product)
+{
+    if ($product && $product->get_review_count() > 0) {
+        $reviews = [];
+        $comments = get_comments([
+            'post_id' => $product->get_id(),
+            'status' => 'approve',
+            'number' => 5 // Limit to 5 reviews
+        ]);
+        foreach ($comments as $comment) {
+            $reviews[] = [
+                "@type" => "Review",
+                "name" => $comment->comment_author,
+                "reviewBody" => $comment->comment_content,
+                "reviewRating" => [
+                    "@type" => "Rating",
+                    "ratingValue" => get_comment_meta($comment->comment_ID, 'rating', true),
+                    "bestRating" => "5",
+                    "worstRating" => "1"
+                ],
+                "datePublished" => $comment->comment_date,
+                "author" => [
+                    "@type" => "Person",
+                    "name" => $comment->comment_author
+                ]
+            ];
+        }
+        return $reviews;
+    } else {
+        return get_random_reviews();
+    }
+}
+
+// Function to get highPrice, lowPrice, and offerCount for products in the same category
+function get_price_info($product)
+{
+    $categories = $product->get_category_ids();
+    if (empty($categories)) {
+        return [
+            'highPrice' => 0,
+            'lowPrice' => 0,
+            'offerCount' => 0
+        ];
+    }
+
+    $args = [
+        'post_type' => 'product',
+        'posts_per_page' => -1,
+        'tax_query' => [
+            [
+                'taxonomy' => 'product_cat',
+                'field' => 'id',
+                'terms' => $categories,
+            ],
+        ],
+    ];
+
+    $query = new WP_Query($args);
+
+    if (!$query->have_posts()) {
+        return [
+            'highPrice' => 0,
+            'lowPrice' => 0,
+            'offerCount' => 0
+        ];
+    }
+
+    $prices = [];
+    foreach ($query->posts as $post) {
+        $product_in_cat = wc_get_product($post->ID);
+        if ($product_in_cat) {
+            $price = $product_in_cat->get_price();
+            if ($price !== '') {
+                $prices[] = $price;
+            }
+        }
+    }
+
+    wp_reset_postdata();
+
+    if (empty($prices)) {
+        return [
+            'highPrice' => 0,
+            'lowPrice' => 0,
+            'offerCount' => 0
+        ];
+    }
+
+    $high_price = max($prices);
+    $low_price = min($prices);
+    $offer_count = count($prices);
+
+    return [
+        'highPrice' => $high_price,
+        'lowPrice' => $low_price,
+        'offerCount' => $offer_count,
+    ];
+}
+
+// Function to get the product material from WooCommerce attributes
+function get_product_material($product)
+{
+    $material = $product->get_attribute('pa_nguyen-lieu');
+    return $material ? $material : '';
+}
+
+// Add custom schema on WooCommerce product detail page
+add_action('wp_head', 'devvn_add_custom_schema_on_product_page', 5); // High priority to add custom schema first
+function devvn_add_custom_schema_on_product_page()
+{
+    if (is_product()) {
+        global $product;
 
         // Create the new schema
         $custom_schema = [
@@ -68,87 +312,41 @@ function devvn_add_custom_category_schema() {
                     ]
                 ],
                 [
-                    "@type" => "CollectionPage",
-                    "@id" => $category_url . "#collectionpage",
-                    "url" => $category_url,
-                    "name" => get_image_alt_text($category_id),
-                    "isPartOf" => [
-                        "@id" => "https://viettienplastic.vn/#website"
-                    ],
-                    "inLanguage" => "vi-VN",
-                    "primaryImageOfPage" => [
-                        "@id" => $category_url . "#primaryimage"
-                    ],
-                    "description" => $category_description,
-                    "thumbnailUrl" => get_thumbnail_url($category_id)
-                ],
-                [
-                    "@type" => "ImageObject",
-                    "keywords" => get_category_keywords($category_id),
-                    "about" => [
-                        "@id" => $category_url . "#thing"
-                    ],
-                    "name" => get_image_alt_text($category_id),
-                    "contentUrl" => get_first_image_url($category_id),
-                    "url" => get_first_image_url($category_id),
-                    "@id" => $category_url . "#primaryimage",
-                    "representativeOfPage" => "True",
-                    "width" => 1200,
-                    "height" => 628,
-                    "encodingFormat" => ".webp",
-                    "uploadDate" => get_image_upload_date($category_id),
-                    "alternativeheadline" => get_image_alt_text($category_id),
-                    "description" => $category_description,
-                    "author" => [
-                        "@id" => "https://viettienplastic.vn/author/viettien#person"
-                    ],
-                    "creator" => [
-                        "@id" => "https://viettienplastic.vn/author/viettien#person"
-                    ],
-                    "producer" => [
-                        "@id" => "https://viettienplastic.vn/"
-                    ],
-                    "copyrightHolder" => [
-                        "@id" => "https://viettienplastic.vn/"
-                    ]
-                ],
-                [
                     "@type" => "Product",
-                    "name" => $category_name,
-                    "alternateName" => get_category_alternate_names($category_id),
-                    "url" => $category_url,
-                    "@id" => $category_url . "#category",
-                    "image" => get_all_image_urls_from_description($category_id),
-                    "description" => $category_description,
-                    "disambiguatingDescription" => get_disambiguating_description($category_id),
+                    "name" => get_product_name($product),
+                    "url" => get_product_url(),
+                    "@id" => get_product_url() . "#product",
+                    "keywords" => get_product_keywords(),
+                    "image" => get_product_images($product),
+                    "description" => get_product_meta_description(),
+                    "disambiguatingDescription" => wp_trim_words(get_the_content(), 200, '...'),
                     "brand" => [
                         "@type" => "Brand",
                         "name" => ["Nhựa Việt Tiến", "Việt Tiến Plastic", "Công ty nhựa Việt Tiến"]
                     ],
-                    "sku" => generate_sku($category_name),
-                    "mpn" => generate_mpn($category_id),
-                    "material" => get_category_material($category_id),
-                    "hasMerchantReturnPolicy" => [
-                        "@type" => "MerchantReturnPolicy",
-                        "inStoreReturnsOffered" => "True",
-                        "merchantReturnDays" => 10,
-                        "merchantReturnLink" => "https://viettienplastic.vn/chinh-sach-doi-tra/"
-                    ],
+                    "sku" => get_product_sku($product),
+                    "mpn" => get_product_mpn($product),
+                    "material" => get_product_material($product),
+                    "hasMerchantReturnPolicy" => json_decode(get_hasMerchantReturnPolicy(), true),
                     "offers" => [
                         "@type" => "AggregateOffer",
-                        "url" => $category_url,
+                        "url" => get_product_url(),
                         "priceCurrency" => "VND",
-                        "lowPrice" => get_low_price($products),
-                        "highPrice" => get_high_price($products),
-                        "offerCount" => count($products)
+                        "price" => $product ? $product->get_price() : 0,
+                        "highPrice" => 0,
+                        "lowPrice" => 0,
+                        "offerCount" => 0,
+                        "itemCondition" => "https://schema.org/NewCondition",
+                        "availability" => "https://schema.org/InStock",
+                        "shippingDetails" => json_decode(get_shippingDetails(), true)
                     ],
                     "aggregateRating" => [
                         "@type" => "AggregateRating",
-                        "ratingValue" => 5,
-                        "bestRating" => 5,
-                        "worstRating" => 4,
-                        "ratingCount" => 96,
-                        "reviewCount" => 19
+                        "ratingValue" => "5",
+                        "bestRating" => "5",
+                        "worstRating" => "4",
+                        "ratingCount" => "217",
+                        "reviewCount" => "137"
                     ],
                     "audience" => [
                         "@type" => "Audience",
@@ -162,248 +360,24 @@ function devvn_add_custom_category_schema() {
                             "name" => "Việt Nam"
                         ]
                     ],
-                    "isSimilarTo" => get_similar_categories($category_id)
-                ],
-                get_random_review()
+                    "review" => get_product_reviews($product)
+                ]
             ]
         ];
 
-        // Output the schema
+        // Get price information for the category
+        $price_info = get_price_info($product);
+        $custom_schema["@graph"][3]["offers"]["highPrice"] = $price_info["highPrice"] ?? 0;
+        $custom_schema["@graph"][3]["offers"]["lowPrice"] = $price_info["lowPrice"] ?? 0;
+        $custom_schema["@graph"][3]["offers"]["offerCount"] = $price_info["offerCount"] ?? 0;
+
+        // Remove material field if not set
+        if (empty($custom_schema["@graph"][3]['material'])) {
+            unset($custom_schema["@graph"][3]['material']);
+        }
+
+        // Add the new schema to the header
         echo '<script type="application/ld+json">' . json_encode($custom_schema, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) . '</script>';
-    }
-}
-
-// Function to get category meta description
-function get_category_meta_description() {
-    return get_post_meta(get_queried_object_id(), '_yoast_wpseo_metadesc', true);
-}
-
-// Function to get products in a category
-function get_products_in_category($category_id) {
-    $args = [
-        'post_type' => 'product',
-        'posts_per_page' => -1,
-        'tax_query' => [
-            [
-                'taxonomy' => 'product_cat',
-                'field' => 'term_id',
-                'terms' => $category_id,
-            ],
-        ],
-    ];
-    $query = new WP_Query($args);
-    $products = $query->posts;
-    wp_reset_postdata();
-    return $products;
-}
-
-// Function to get the low price of products
-function get_low_price($products) {
-    $prices = array_map(function($product) {
-        $product_obj = wc_get_product($product->ID);
-        return $product_obj ? $product_obj->get_price() : 0;
-    }, $products);
-    $prices = array_filter($prices, function($price) {
-        return $price !== '';
-    });
-    return empty($prices) ? 0 : min($prices);
-}
-
-// Function to get the high price of products
-function get_high_price($products) {
-    $prices = array_map(function($product) {
-        $product_obj = wc_get_product($product->ID);
-        return $product_obj ? $product_obj->get_price() : 0;
-    }, $products);
-    $prices = array_filter($prices, function($price) {
-        return $price !== '';
-    });
-    return empty($prices) ? 0 : max($prices);
-}
-
-// Function to get the thumbnail URL of the category
-function get_thumbnail_url($category_id) {
-    $thumbnail_id = get_term_meta($category_id, 'thumbnail_id', true);
-    if ($thumbnail_id) {
-        $image = wp_get_attachment_url($thumbnail_id);
-        return $image ? $image : '';
-    }
-    return '';
-}
-
-// Function to get category keywords
-function get_category_keywords($category_id) {
-    return get_term_meta($category_id, 'category_keywords', true) ?: [];
-}
-
-// Function to get image alt text
-function get_image_alt_text($category_id) {
-    $thumbnail_id = get_term_meta($category_id, 'thumbnail_id', true);
-    return $thumbnail_id ? get_post_meta($thumbnail_id, '_wp_attachment_image_alt', true) : '';
-}
-
-// Function to get the first image URL of the category
-function get_first_image_url($category_id) {
-    $thumbnail_id = get_term_meta($category_id, 'thumbnail_id', true);
-    return $thumbnail_id ? wp_get_attachment_url($thumbnail_id) : '';
-}
-
-// Function to get image upload date
-function get_image_upload_date($category_id) {
-    $thumbnail_id = get_term_meta($category_id, 'thumbnail_id', true);
-    $post = get_post($thumbnail_id);
-    return $post ? $post->post_date : '';
-}
-
-// Function to get image description
-function get_image_description($category_id) {
-    return get_term_meta($category_id, 'image_description', true) ?: '';
-}
-
-// Function to get category alternate names
-function get_category_alternate_names($category_id) {
-    return get_term_meta($category_id, 'category_alternate_names', true) ?: [];
-}
-
-// Function to get all image URLs of the category
-function get_all_image_urls_from_description($category_id) {
-    $description = term_description($category_id);
-    preg_match_all('/<img[^>]+src="([^">]+)"/', $description, $matches);
-    return $matches[1] ?: [];
-}
-
-// Function to get disambiguating description
-function get_disambiguating_description($category_id) {
-    $content = term_description($category_id);
-    $content = strip_tags($content); // Remove HTML tags
-    return mb_substr($content, 0, 200) . (mb_strlen($content) > 200 ? '...' : '');
-}
-
-// Function to get materials of the category
-function get_category_material($category_id) {
-    return get_term_meta($category_id, 'category_material', true) ?: [];
-}
-
-// Function to get similar categories
-function get_similar_categories($category_id) {
-    // Get child categories
-    $child_categories = get_terms(array(
-        'taxonomy' => 'product_cat',
-        'child_of' => $category_id,
-        'hide_empty' => false,
-    ));
-
-    $isSimilarTo = [];
-
-    foreach ($child_categories as $child) {
-        $child_url = get_term_link($child);
-        $child_name = single_cat_title('', false); // Fetch the H1 title
-        $isSimilarTo[] = [
-            "@type" => "Thing",
-            "name" => $child_name,
-            "url" => $child_url,
-            "@id" => $child_url . "#category"
-        ];
-    }
-
-    return $isSimilarTo;
-}
-
-// Function to generate a SKU
-function generate_sku($category_name) {
-    $sku = strtoupper(mb_substr($category_name, 0, 2)); // Take first two characters
-    return $sku + rand(1000, 9999);
-}
-
-// Function to generate a MPN
-function generate_mpn($category_id) {
-    $product_count = count(get_products_in_category($category_id));
-    return $product_count . "TR";
-}
-
-// Function to get a random review
-function get_random_review() {
-    $reviews_data = [
-        ["LyLy", "Hàng tốt giá rẻ nên mua", "5"],
-        ["Nam", "Chất lượng sản phẩm tốt", "5"],
-        ["Trang", "Giao hàng nhanh, đóng gói kỹ", "5"],
-        ["Minh", "Sản phẩm đúng mô tả", "4"],
-        ["Phương", "Giá cả hợp lý", "4"]
-    ];
-
-    $random_reviews = [];
-    for ($i = 0; $i < 5; $i++) {
-        $random_review = $reviews_data[array_rand($reviews_data)];
-        $random_reviews[] = [
-            "@type" => "Review",
-            "name" => $random_review[0],
-            "reviewBody" => $random_review[1],
-            "reviewRating" => [
-                "@type" => "Rating",
-                "ratingValue" => $random_review[2],
-                "bestRating" => "5",
-                "worstRating" => "4"
-            ],
-            "datePublished" => date("Y-m-d"),
-            "author" => [
-                "@type" => "Person",
-                "name" => $random_review[0]
-            ]
-        ];
-    }
-    return $random_reviews;
-}
-
-// Add fields to category edit form
-add_action('product_cat_edit_form_fields', 'add_category_custom_fields', 10, 2);
-function add_category_custom_fields($term) {
-    // Add form fields for keywords, alternate names, materials, and image description
-    ?>
-    <tr class="form-field">
-        <th scope="row" valign="top"><label for="category_keywords"><?php _e('Category Keywords'); ?></label></th>
-        <td>
-            <input type="text" name="category_keywords" id="category_keywords" value="<?php echo esc_attr(get_term_meta($term->term_id, 'category_keywords', true)); ?>" />
-            <p class="description"><?php _e('Enter the keywords for the category, separated by commas.'); ?></p>
-        </td>
-    </tr>
-    <tr class="form-field">
-        <th scope="row" valign="top"><label for="category_alternate_names"><?php _e('Category Alternate Names'); ?></label></th>
-        <td>
-            <input type="text" name="category_alternate_names" id="category_alternate_names" value="<?php echo esc_attr(get_term_meta($term->term_id, 'category_alternate_names', true)); ?>" />
-            <p class="description"><?php _e('Enter the alternate names for the category, separated by commas.'); ?></p>
-        </td>
-    </tr>
-    <tr class="form-field">
-        <th scope="row" valign="top"><label for="category_material"><?php _e('Category Material'); ?></label></th>
-        <td>
-            <input type="text" name="category_material" id="category_material" value="<?php echo esc_attr(get_term_meta($term->term_id, 'category_material', true)); ?>" />
-            <p class="description"><?php _e('Enter the materials for the category, separated by commas.'); ?></p>
-        </td>
-    </tr>
-    <tr class="form-field">
-        <th scope="row" valign="top"><label for="image_description"><?php _e('Image Description'); ?></label></th>
-        <td>
-            <textarea name="image_description" id="image_description" rows="5" cols="50"><?php echo esc_textarea(get_term_meta($term->term_id, 'image_description', true)); ?></textarea>
-            <p class="description"><?php _e('Enter the description for the image.'); ?></p>
-        </td>
-    </tr>
-    <?php
-}
-
-// Save category custom fields
-add_action('edited_product_cat', 'save_category_custom_fields', 10, 2);
-function save_category_custom_fields($term_id) {
-    if (isset($_POST['category_keywords'])) {
-        update_term_meta($term_id, 'category_keywords', sanitize_text_field($_POST['category_keywords']));
-    }
-    if (isset($_POST['category_alternate_names'])) {
-        update_term_meta($term_id, 'category_alternate_names', sanitize_text_field($_POST['category_alternate_names']));
-    }
-    if (isset($_POST['category_material'])) {
-        update_term_meta($term_id, 'category_material', sanitize_text_field($_POST['category_material']));
-    }
-    if (isset($_POST['image_description'])) {
-        update_term_meta($term_id, 'image_description', sanitize_textarea_field($_POST['image_description']));
     }
 }
 ?>
