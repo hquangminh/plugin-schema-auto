@@ -29,26 +29,19 @@ function devvn_add_custom_category_schema()
     $category_id = $category->term_id;
     $category_name = $category->name;
     $category_url = get_term_link($category);
-    $description = term_description($category_id, 'product_cat');
+    $description = get_yoast_meta_description($category_id);
 
     // Fetch products in the current category
     $products = get_products_in_category($category_id);
 
-    // Get meta description directly from term meta
-    $meta_description = get_category_meta_description($category_id);
-    $description_text = $meta_description ? $meta_description : wp_trim_words(wp_strip_all_tags($description), 25, '...');
-
-    // Generate a random review
-    $random_review = get_random_review($category_name, $category_url);
+    // Get disambiguating description from WooCommerce category description
+    $disambiguating_description = get_woocommerce_disambiguating_description($category_id);
 
     // Get the first image URL from the category description
     $first_image_url = get_first_image_url_from_description($category_id);
 
     // Get the alt text of the first image from the category description
     $first_image_alt = get_first_image_alt_from_description($category_id);
-
-    // Get the disambiguating description from the category description
-    $disambiguating_description = get_disambiguating_description($category_id);
 
     // Create the new schema
     $custom_schema = [
@@ -100,7 +93,7 @@ function devvn_add_custom_category_schema()
           "primaryImageOfPage" => [
             "@id" => $category_url . "#primaryimage"
           ],
-          "description" => $description_text,
+          "description" => $description,
           "thumbnailUrl" => $first_image_url,
         ],
         [
@@ -144,7 +137,7 @@ function devvn_add_custom_category_schema()
           "url" => $category_url,
           "@id" => $category_url . "#category",
           "image" => get_all_image_urls_from_description($category_id),
-          "description" => $description_text,
+          "description" => $description,
           "disambiguatingDescription" => $disambiguating_description,
           "brand" => [
             "@type" => "Brand",
@@ -188,7 +181,7 @@ function devvn_add_custom_category_schema()
             ]
           ],
           "isSimilarTo" => get_similar_categories($category_id),
-          "review" => [$random_review] // Add review here
+          "review" => [get_random_review($category_name, $category_url)] // Add review here
         ],
       ]
     ];
@@ -198,10 +191,27 @@ function devvn_add_custom_category_schema()
   }
 }
 
-// Function to get category meta description
-function get_category_meta_description($category_id)
+// Function to get Yoast meta description
+function get_yoast_meta_description($term_id)
 {
-  return get_term_meta($category_id, '_yoast_wpseo_metadesc', true);
+  return get_term_meta($term_id, '_yoast_wpseo_metadesc', true) ?: '';
+}
+
+
+// Function to get WooCommerce disambiguating description
+function get_woocommerce_disambiguating_description($term_id)
+{
+  $content = term_description($term_id);
+  if (preg_match('/<h1[^>]*>(.*?)<\/h1>/is', $content, $matches)) {
+    $text_after_h1 = strstr($content, $matches[0]);
+    $text_after_h1 = substr($text_after_h1, strlen($matches[0]));
+    $text_after_h1 = strip_tags($text_after_h1);
+    if (mb_strlen($text_after_h1) > 200) {
+      $text_after_h1 = mb_substr($text_after_h1, 0, 200) . '...';
+    }
+    return $text_after_h1;
+  }
+  return '';
 }
 
 // Function to get products in a category
@@ -264,25 +274,6 @@ function get_first_image_alt_from_description($category_id)
   $description = term_description($category_id);
   preg_match('/<img[^>]+alt="([^">]+)"/', $description, $matches);
   return $matches[1] ?: '';
-}
-
-// Function to get the disambiguating description from the category description
-function get_disambiguating_description($category_id)
-{
-  $content = term_description($category_id);
-  $dom = new DOMDocument;
-  @$dom->loadHTML(mb_convert_encoding($content, 'HTML-ENTITIES', 'UTF-8'));
-  $h1 = $dom->getElementsByTagName('h1')->item(0);
-  if ($h1) {
-    $description = '';
-    while ($h1 = $h1->nextSibling) {
-      if ($h1->nodeType === XML_TEXT_NODE) {
-        $description .= $h1->nodeValue;
-      }
-    }
-    return mb_substr(trim($description), 0, 200) . (mb_strlen($description) > 200 ? '...' : '');
-  }
-  return mb_substr(strip_tags($content), 0, 200) . (mb_strlen($content) > 200 ? '...' : '');
 }
 
 // Function to get category keywords
