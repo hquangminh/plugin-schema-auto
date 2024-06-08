@@ -29,21 +29,19 @@ function devvn_add_custom_category_schema()
     $category_id = $category->term_id;
     $category_name = $category->name;
     $category_url = get_term_link($category);
-    $description = term_description($category_id, 'product_cat');
+    $description = get_yoast_meta_description($category_id);
 
     // Fetch products in the current category
     $products = get_products_in_category($category_id);
 
-    $html = file_get_contents($category_url);
-    $dom = new DOMDocument;
-    @$dom->loadHTML(mb_convert_encoding($html, 'HTML-ENTITIES', 'UTF-8'));
-    $xpath = new DOMXPath($dom);
-    $meta_description_nodes = $xpath->query("//meta[@name='description']");
-    $meta_description = $meta_description_nodes->length > 0 ? $meta_description_nodes->item(0)->getAttribute('content') : '';
-    $description_text = $meta_description ? $meta_description : wp_trim_words(wp_strip_all_tags($description), 25, '...');
+    // Get disambiguating description from WooCommerce category description
+    $disambiguating_description = get_woocommerce_disambiguating_description($category_id);
 
-    // Generate a random review
-    $random_review = get_random_review($category_name, $category_url);
+    // Get the first image URL from the category description
+    $first_image_url = get_first_image_url_from_description($category_id);
+
+    // Get the alt text of the first image from the category description
+    $first_image_alt = get_first_image_alt_from_description($category_id);
 
     // Create the new schema
     $custom_schema = [
@@ -87,7 +85,7 @@ function devvn_add_custom_category_schema()
           "@type" => "CollectionPage",
           "@id" => $category_url . "#collectionpage",
           "url" => $category_url,
-          "name" => get_image_alt_text($category_id),
+          "name" => $category_name,
           "isPartOf" => [
             "@id" => "https://viettienplastic.vn/#website"
           ],
@@ -95,8 +93,8 @@ function devvn_add_custom_category_schema()
           "primaryImageOfPage" => [
             "@id" => $category_url . "#primaryimage"
           ],
-          "description" => $description_text,
-          "thumbnailUrl" => get_thumbnail_url($category_id)
+          "description" => $description,
+          "thumbnailUrl" => $first_image_url,
         ],
         [
           "@type" => "ImageObject",
@@ -104,16 +102,16 @@ function devvn_add_custom_category_schema()
           "about" => [
             "@id" => $category_url . "#thing"
           ],
-          "name" => get_image_alt_text($category_id),
-          "contentUrl" => get_first_image_url($category_id),
-          "url" => get_first_image_url($category_id),
+          "name" => $first_image_alt,
+          "contentUrl" => $first_image_url,
+          "url" => $first_image_url,
           "@id" => $category_url . "#primaryimage",
           "representativeOfPage" => "True",
           "width" => 1200,
           "height" => 628,
           "encodingFormat" => ".webp",
           "uploadDate" => get_image_upload_date($category_id),
-          "alternativeheadline" => get_image_alt_text($category_id),
+          "alternativeheadline" => $first_image_alt,
           "description" => get_image_description($category_id),
           "author" => [
             "@id" => "https://viettienplastic.vn/author/viettien#person"
@@ -139,8 +137,8 @@ function devvn_add_custom_category_schema()
           "url" => $category_url,
           "@id" => $category_url . "#category",
           "image" => get_all_image_urls_from_description($category_id),
-          "description" => $description_text,
-          "disambiguatingDescription" => get_disambiguating_description($category_id),
+          "description" => $description,
+          "disambiguatingDescription" => $disambiguating_description,
           "brand" => [
             "@type" => "Brand",
             "name" => ["Nhựa Việt Tiến", "Việt Tiến Plastic", "Công ty nhựa Việt Tiến"]
@@ -183,7 +181,7 @@ function devvn_add_custom_category_schema()
             ]
           ],
           "isSimilarTo" => get_similar_categories($category_id),
-          "review" => [$random_review] // Add review here
+          "review" => [get_random_review($category_name, $category_url)] // Add review here
         ],
       ]
     ];
@@ -193,10 +191,26 @@ function devvn_add_custom_category_schema()
   }
 }
 
-// Function to get category meta description
-function get_category_meta_description()
+// Function to get Yoast meta description
+function get_yoast_meta_description($term_id)
 {
-  return get_post_meta(get_queried_object_id(), '_yoast_wpseo_metadesc', true);
+  return get_post_meta(get_the_ID(), '_yoast_wpseo_metadesc', true);
+}
+
+// Function to get WooCommerce disambiguating description
+function get_woocommerce_disambiguating_description($term_id)
+{
+  $content = term_description($term_id);
+  if (preg_match('/<h1[^>]*>(.*?)<\/h1>/is', $content, $matches)) {
+    $text_after_h1 = strstr($content, $matches[0]);
+    $text_after_h1 = substr($text_after_h1, strlen($matches[0]));
+    $text_after_h1 = strip_tags($text_after_h1);
+    if (mb_strlen($text_after_h1) > 200) {
+      $text_after_h1 = mb_substr($text_after_h1, 0, 200) . '...';
+    }
+    return $text_after_h1;
+  }
+  return '';
 }
 
 // Function to get products in a category
@@ -245,15 +259,20 @@ function get_high_price($products)
   return empty($prices) ? 0 : max($prices);
 }
 
-// Function to get the thumbnail URL of the category
-function get_thumbnail_url($category_id)
+// Function to get the first image URL from the category description
+function get_first_image_url_from_description($category_id)
 {
-  $thumbnail_id = get_term_meta($category_id, 'thumbnail_id', true);
-  if ($thumbnail_id) {
-    $image = wp_get_attachment_url($thumbnail_id);
-    return $image ? $image : '';
-  }
-  return '';
+  $description = term_description($category_id);
+  preg_match('/<img[^>]+src="([^">]+)"/', $description, $matches);
+  return $matches[1] ?: '';
+}
+
+// Function to get the alt text of the first image from the category description
+function get_first_image_alt_from_description($category_id)
+{
+  $description = term_description($category_id);
+  preg_match('/<img[^>]+alt="([^">]+)"/', $description, $matches);
+  return $matches[1] ?: '';
 }
 
 // Function to get category keywords
@@ -261,20 +280,6 @@ function get_category_keywords($category_id)
 {
   $keywords = get_term_meta($category_id, 'category_keywords', true);
   return $keywords ? array_map('trim', explode(',', $keywords)) : [];
-}
-
-// Function to get image alt text
-function get_image_alt_text($category_id)
-{
-  $thumbnail_id = get_term_meta($category_id, 'thumbnail_id', true);
-  return $thumbnail_id ? get_post_meta($thumbnail_id, '_wp_attachment_image_alt', true) : '';
-}
-
-// Function to get the first image URL of the category
-function get_first_image_url($category_id)
-{
-  $thumbnail_id = get_term_meta($category_id, 'thumbnail_id', true);
-  return $thumbnail_id ? wp_get_attachment_url($thumbnail_id) : '';
 }
 
 // Function to get image upload date
@@ -304,14 +309,6 @@ function get_all_image_urls_from_description($category_id)
   $description = term_description($category_id);
   preg_match_all('/<img[^>]+src="([^">]+)"/', $description, $matches);
   return $matches[1] ?: [];
-}
-
-// Function to get disambiguating description
-function get_disambiguating_description($category_id)
-{
-  $content = term_description($category_id);
-  $content = strip_tags($content); // Remove HTML tags
-  return mb_substr($content, 0, 200) . (mb_strlen($content) > 200 ? '...' : '');
 }
 
 // Function to get materials of the category
@@ -356,10 +353,15 @@ function get_similar_categories($category_id)
   return $isSimilarTo;
 }
 
-// Function to generate a SKU
+// Function to generate SKU
 function generate_sku($category_name)
 {
-  $sku = strtoupper(mb_substr($category_name, 0, 2)); // Take first two characters
+  // Split the category name into words and take the first letter of each word
+  $words = explode(' ', $category_name);
+  $sku = '';
+  foreach ($words as $word) {
+    $sku .= strtoupper(mb_substr($word, 0, 1));
+  }
   return $sku . rand(1000, 9999);
 }
 
@@ -367,7 +369,14 @@ function generate_sku($category_name)
 function generate_mpn($category_id, $category_name)
 {
   $product_count = count(get_products_in_category($category_id));
-  $mpn_prefix = strtoupper(mb_substr($category_name, 0, 2)); // Take first two characters
+
+  // Split the category name into words and take the first letter of each word
+  $words = explode(' ', $category_name);
+  $mpn_prefix = '';
+  foreach ($words as $word) {
+    $mpn_prefix .= strtoupper(mb_substr($word, 0, 1));
+  }
+
   return $mpn_prefix . $product_count;
 }
 
@@ -457,22 +466,22 @@ function save_category_custom_fields($term_id)
 {
   if (isset($_POST['category_keywords'])) {
     $keywords = array_map('trim', explode(',', sanitize_text_field($_POST['category_keywords'])));
-    $keywords = array_map(function($keyword) {
-        return trim($keyword, '"');
+    $keywords = array_map(function ($keyword) {
+      return trim($keyword, '"');
     }, $keywords);
     update_term_meta($term_id, 'category_keywords', implode(',', $keywords));
   }
   if (isset($_POST['category_alternate_names'])) {
     $alternate_names = array_map('trim', explode(',', sanitize_text_field($_POST['category_alternate_names'])));
-    $alternate_names = array_map(function($name) {
-        return trim($name, '"');
+    $alternate_names = array_map(function ($name) {
+      return trim($name, '"');
     }, $alternate_names);
     update_term_meta($term_id, 'category_alternate_names', implode(',', $alternate_names));
   }
   if (isset($_POST['category_material'])) {
     $materials = array_map('trim', explode(',', sanitize_text_field($_POST['category_material'])));
-    $materials = array_map(function($material) {
-        return trim($material, '"');
+    $materials = array_map(function ($material) {
+      return trim($material, '"');
     }, $materials);
     update_term_meta($term_id, 'category_material', implode(',', $materials));
   }
