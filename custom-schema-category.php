@@ -34,6 +34,7 @@ function devvn_add_custom_category_schema()
     // Fetch products in the current category
     $products = get_products_in_category($category_id);
 
+    // Fetch HTML content of the category page
     $html = file_get_contents($category_url);
     $dom = new DOMDocument;
     @$dom->loadHTML(mb_convert_encoding($html, 'HTML-ENTITIES', 'UTF-8'));
@@ -44,6 +45,15 @@ function devvn_add_custom_category_schema()
 
     // Generate a random review
     $random_review = get_random_review($category_name, $category_url);
+
+    // Get the first image URL from the category description
+    $first_image_url = get_first_image_url_from_description($category_id);
+
+    // Get the alt text of the first image from the category description
+    $first_image_alt = get_first_image_alt_from_description($category_id);
+
+    // Get the disambiguating description from the category description
+    $disambiguating_description = get_disambiguating_description($category_id);
 
     // Create the new schema
     $custom_schema = [
@@ -78,12 +88,16 @@ function devvn_add_custom_category_schema()
           "publisher" => [
             "@id" => "https://viettienplastic.vn/#organization"
           ],
+          "license" => "https://viettienplastic.vn/license",
+          "creditText" => "Nhựa Việt Tiến",
+          "acquireLicensePage" => "https://viettienplastic.vn/acquire-license",
+          "copyrightNotice" => "© 2023 Nhựa Việt Tiến"
         ],
         [
           "@type" => "CollectionPage",
           "@id" => $category_url . "#collectionpage",
           "url" => $category_url,
-          "name" => get_image_alt_text($category_id),
+          "name" => $category_name,
           "isPartOf" => [
             "@id" => "https://viettienplastic.vn/#website"
           ],
@@ -92,7 +106,7 @@ function devvn_add_custom_category_schema()
             "@id" => $category_url . "#primaryimage"
           ],
           "description" => $description_text,
-          "thumbnailUrl" => get_thumbnail_url($category_id)
+          "thumbnailUrl" => $first_image_url,
         ],
         [
           "@type" => "ImageObject",
@@ -100,16 +114,16 @@ function devvn_add_custom_category_schema()
           "about" => [
             "@id" => $category_url . "#thing"
           ],
-          "name" => get_image_alt_text($category_id),
-          "contentUrl" => get_first_image_url($category_id),
-          "url" => get_first_image_url($category_id),
+          "name" => $first_image_alt,
+          "contentUrl" => $first_image_url,
+          "url" => $first_image_url,
           "@id" => $category_url . "#primaryimage",
           "representativeOfPage" => "True",
           "width" => 1200,
           "height" => 628,
           "encodingFormat" => ".webp",
           "uploadDate" => get_image_upload_date($category_id),
-          "alternativeheadline" => get_image_alt_text($category_id),
+          "alternativeheadline" => $first_image_alt,
           "description" => get_image_description($category_id),
           "author" => [
             "@id" => "https://viettienplastic.vn/author/viettien#person"
@@ -124,9 +138,9 @@ function devvn_add_custom_category_schema()
             "@id" => "https://viettienplastic.vn/"
           ],
           "copyrightNotice" => "Copyright 2024 © Công ty TNHH Nhựa Việt Tiến",
-          "acquireLicensePage" => "https://viettienplastic.vn/acquire-license/",
+          "acquireLicensePage" => "https://viettienplastic.vn/acquire-license",
           "creditText" => "Nhựa Việt Tiến",
-          "license" => "https://viettienplastic.vn/license/"
+          "license" => "https://viettienplastic.vn/license"
         ],
         [
           "@type" => "Product",
@@ -136,7 +150,7 @@ function devvn_add_custom_category_schema()
           "@id" => $category_url . "#category",
           "image" => get_all_image_urls_from_description($category_id),
           "description" => $description_text,
-          "disambiguatingDescription" => get_disambiguating_description($category_id),
+          "disambiguatingDescription" => $disambiguating_description,
           "brand" => [
             "@type" => "Brand",
             "name" => ["Nhựa Việt Tiến", "Việt Tiến Plastic", "Công ty nhựa Việt Tiến"]
@@ -241,15 +255,39 @@ function get_high_price($products)
   return empty($prices) ? 0 : max($prices);
 }
 
-// Function to get the thumbnail URL of the category
-function get_thumbnail_url($category_id)
+// Function to get the first image URL from the category description
+function get_first_image_url_from_description($category_id)
 {
-  $thumbnail_id = get_term_meta($category_id, 'thumbnail_id', true);
-  if ($thumbnail_id) {
-    $image = wp_get_attachment_url($thumbnail_id);
-    return $image ? $image : '';
+  $description = term_description($category_id);
+  preg_match('/<img[^>]+src="([^">]+)"/', $description, $matches);
+  return $matches[1] ?: '';
+}
+
+// Function to get the alt text of the first image from the category description
+function get_first_image_alt_from_description($category_id)
+{
+  $description = term_description($category_id);
+  preg_match('/<img[^>]+alt="([^">]+)"/', $description, $matches);
+  return $matches[1] ?: '';
+}
+
+// Function to get the disambiguating description from the category description
+function get_disambiguating_description($category_id)
+{
+  $content = term_description($category_id);
+  $dom = new DOMDocument;
+  @$dom->loadHTML(mb_convert_encoding($content, 'HTML-ENTITIES', 'UTF-8'));
+  $h1 = $dom->getElementsByTagName('h1')->item(0);
+  if ($h1) {
+    $description = '';
+    while ($h1 = $h1->nextSibling) {
+      if ($h1->nodeType === XML_TEXT_NODE) {
+        $description .= $h1->nodeValue;
+      }
+    }
+    return mb_substr(trim($description), 0, 200) . (mb_strlen($description) > 200 ? '...' : '');
   }
-  return '';
+  return mb_substr(strip_tags($content), 0, 200) . (mb_strlen($content) > 200 ? '...' : '');
 }
 
 // Function to get category keywords
@@ -257,20 +295,6 @@ function get_category_keywords($category_id)
 {
   $keywords = get_term_meta($category_id, 'category_keywords', true);
   return $keywords ? array_map('trim', explode(',', $keywords)) : [];
-}
-
-// Function to get image alt text
-function get_image_alt_text($category_id)
-{
-  $thumbnail_id = get_term_meta($category_id, 'thumbnail_id', true);
-  return $thumbnail_id ? get_post_meta($thumbnail_id, '_wp_attachment_image_alt', true) : '';
-}
-
-// Function to get the first image URL of the category
-function get_first_image_url($category_id)
-{
-  $thumbnail_id = get_term_meta($category_id, 'thumbnail_id', true);
-  return $thumbnail_id ? wp_get_attachment_url($thumbnail_id) : '';
 }
 
 // Function to get image upload date
@@ -300,25 +324,6 @@ function get_all_image_urls_from_description($category_id)
   $description = term_description($category_id);
   preg_match_all('/<img[^>]+src="([^">]+)"/', $description, $matches);
   return $matches[1] ?: [];
-}
-
-// Function to get disambiguating description
-function get_disambiguating_description($category_id)
-{
-  $content = term_description($category_id);
-  $dom = new DOMDocument;
-  @$dom->loadHTML(mb_convert_encoding($content, 'HTML-ENTITIES', 'UTF-8'));
-  $h1 = $dom->getElementsByTagName('h1')->item(0);
-  if ($h1) {
-    $description = '';
-    while ($h1 = $h1->nextSibling) {
-      if ($h1->nodeType === XML_TEXT_NODE) {
-        $description .= $h1->nodeValue;
-      }
-    }
-    return mb_substr(trim($description), 0, 200) . (mb_strlen($description) > 200 ? '...' : '');
-  }
-  return mb_substr(strip_tags($content), 0, 200) . (mb_strlen($content) > 200 ? '...' : '');
 }
 
 // Function to get materials of the category
@@ -376,7 +381,6 @@ function generate_sku($category_name)
 }
 
 // Function to generate a MPN
-// Function to generate a MPN
 function generate_mpn($category_id, $category_name)
 {
   $product_count = count(get_products_in_category($category_id));
@@ -390,7 +394,6 @@ function generate_mpn($category_id, $category_name)
 
   return $mpn_prefix . $product_count;
 }
-
 
 // Function to get a random review
 function get_random_review($category_name, $category_url)
